@@ -3,6 +3,13 @@
 
 console.log('MCP Server Shortcut - Starting up...');
 
-// Your code here
+const { createShortcut } = require('./src/shortcut');
 
+// Example usage
+const shortcut = createShortcut('example-server', {
+  port: 8080,
+  secure: true
+});
+
+console.log('Created shortcut:', shortcut);
 console.log('MCP Server Shortcut - Ready!');

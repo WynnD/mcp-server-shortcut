@@ -8,49 +8,97 @@ Run this server with:
 python -m src.server
 """
 
-import json
 import logging
-from datetime import datetime
-from typing import List, Dict, Any, Optional, Union, Literal
+import os
+import sys # Import sys for more detailed error info if needed
 
-from mcp.server.fastmcp import FastMCP
+# --- Setup File Logging ---
+# Determine an absolute path for the log file to avoid ambiguity
+# This will place server_debug.log in the same directory as server.py (i.e., in src/)
+log_file_dir = os.path.dirname(os.path.abspath(__file__))
+log_file_path = os.path.join(log_file_dir, 'server_debug.log')
 
-from .shortcut_client import ShortcutClient
-from .utils import (
-    StoryType, 
-    StorySummary, 
-    StoryDetail, 
-    Comment, 
-    WorkflowState,
-    Project, 
-    ErrorResponse, 
-    SuccessResponse,
-    create_bug_report_template,
-    create_feature_request_template
-)
+# Configure root logger to catch all logs
+root_logger = logging.getLogger('')
+root_logger.setLevel(logging.DEBUG) # Capture DEBUG level and above
 
-# Configure logging
+# Create file handler
+try:
+    # Use 'w' to overwrite the log file on each run, making it easier to read
+    file_handler = logging.FileHandler(log_file_path, mode='w')
+    file_handler.setLevel(logging.DEBUG) # Log DEBUG and above to file
+    # More detailed formatter
+    file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(pathname)s:%(lineno)d - %(message)s')
+    file_handler.setFormatter(file_formatter)
+    root_logger.addHandler(file_handler)
+except Exception as e:
+    # If logging setup fails, print to stderr (which might be visible somewhere or nowhere)
+    print(f"CRITICAL: Failed to configure file logging to {log_file_path}: {e}", file=sys.stderr)
+
+# Get a logger for this specific module
 logger = logging.getLogger(__name__)
+logger.info(f"--- MCP Shortcut Server script execution started. Logging to: {log_file_path} ---")
+# --- End File Logging Setup ---
 
-# Initialize the Shortcut client
-shortcut_client = ShortcutClient()
+# --- Rest of your imports ---
+try:
+    logger.debug("Attempting to import json, datetime, typing...")
+    import json
+    from datetime import datetime
+    from typing import List, Dict, Any, Optional, Union, Literal
+    logger.debug("Core Python imports successful.")
 
-# Initialize FastMCP server with dependencies
-mcp = FastMCP(
-    "Shortcut.com Ticket Manager",
-    dependencies=[
-        "requests",
-        "httpx",
-        "pydantic",
-        "python-dotenv"
-    ]
-)
+    logger.debug("Attempting to import FastMCP...")
+    from fastmcp import FastMCP
+    logger.debug("FastMCP imported successfully.")
+
+    logger.debug("Attempting to import local modules (.shortcut_client, .utils, .config)...")
+    from .shortcut_client import ShortcutClient
+    logger.debug(".shortcut_client imported.")
+    from .utils import (
+        StoryType, StorySummary, StoryDetail, Comment, WorkflowState,
+        Project, ErrorResponse, SuccessResponse,
+        create_bug_report_template, create_feature_request_template
+    )
+    logger.debug(".utils imported.")
+    from . import config
+    logger.debug(".config imported. SHORTCUT_API_TOKEN first 5: {}".format(getattr(config, 'SHORTCUT_API_TOKEN', 'N/A')[:5]))
+
+except ImportError as e:
+    logger.error(f"ImportError during server startup: {e}", exc_info=True)
+    # If imports fail, the server likely won't work, so re-raise or exit
+    # For now, we'll let it try to continue to see if mcp object gets created.
+    # In a real scenario, you might want to sys.exit(1) here.
+except Exception as e:
+    logger.error(f"Generic exception during imports or initial config: {e}", exc_info=True)
+# --- End Imports ---
+
+logger.info("Initializing ShortcutClient...")
+try:
+    shortcut_client = ShortcutClient()
+    logger.info("ShortcutClient initialized.")
+    if not shortcut_client.api_token:
+        logger.warning("ShortcutClient initialized BUT API TOKEN IS MISSING or empty.")
+    else:
+        logger.info("ShortcutClient appears to have an API token.")
+except Exception as e:
+    logger.error(f"Exception during ShortcutClient() instantiation: {e}", exc_info=True)
+    # This is critical, server probably can't function
+    # For now, we log and continue to see if FastMCP part errors out
+    
+logger.info("Initializing FastMCP server object...")
+try:
+    mcp = FastMCP("Shortcut.com Ticket Manager")
+    logger.info("FastMCP object initialized.")
+except Exception as e:
+    logger.error(f"Exception during FastMCP() instantiation: {e}", exc_info=True)
+    # Critical if FastMCP object itself fails
 
 # Resource implementations
 @mcp.resource("shortcut://stories?workflow_state_id={workflow_state_id}&project_id={project_id}&limit={limit}")
 async def get_stories_resource(
-    workflow_state_id: Optional[int] = None,
-    project_id: Optional[int] = None,
+    workflow_state_id: int = None,
+    project_id: int = None,
     limit: int = 20
 ) -> str:
     """
@@ -104,9 +152,9 @@ async def get_story_resource(story_id: int) -> str:
 # Tool implementations
 @mcp.tool()
 async def list_stories(
-    workflow_state_id: Optional[int] = None,
-    project_id: Optional[int] = None,
-    owner_id: Optional[str] = None,
+    workflow_state_id: int = None,
+    project_id: int = None,
+    owner_id: str = None,
     limit: int = 25
 ) -> str:
     """
@@ -196,10 +244,10 @@ async def create_story(
     name: str,
     description: str,
     story_type: StoryType = StoryType.FEATURE,
-    project_id: Optional[int] = None,
-    workflow_state_id: Optional[int] = None,
-    owner_ids: Optional[List[str]] = None,
-    labels: Optional[List[str]] = None
+    project_id: int = None,
+    workflow_state_id: int = None,
+    owner_ids: List[str] = None,
+    labels: List[str] = None
 ) -> str:
     """
     Create a new story in Shortcut.
@@ -252,11 +300,11 @@ async def create_story(
 @mcp.tool()
 async def update_story(
     story_id: int,
-    name: Optional[str] = None,
-    description: Optional[str] = None,
-    story_type: Optional[StoryType] = None,
-    workflow_state_id: Optional[int] = None,
-    owner_ids: Optional[List[str]] = None
+    name: str = None,
+    description: str = None,
+    story_type: StoryType = None,
+    workflow_state_id: int = None,
+    owner_ids: List[str] = None
 ) -> str:
     """
     Update an existing story in Shortcut.
@@ -414,9 +462,23 @@ def create_feature_request(title: str, description: str, user_value: str, accept
     return create_feature_request_template(title, description, user_value, acceptance_criteria)
 
 def main():
-    """Main entry point for the server"""
-    mcp.run()
+    logger.info("--- main() function called ---")
+    
+    logger.info(f"Attempting to start FastMCP server with mcp.run() for stdio transport")
+    try:
+        if 'mcp' in globals(): # Check if mcp object exists
+            mcp.run() # MODIFIED: Default to stdio transport
+            logger.info("mcp.run() called. Server should be running via stdio if no exceptions occurred.")
+        else:
+            logger.error("FastMCP object 'mcp' not found in globals. Server cannot start.")
+    except KeyboardInterrupt:
+        logger.info("MCP server shutting down due to KeyboardInterrupt...")
+    except Exception as e:
+        logger.error(f"Exception during mcp.run() or server execution: {e}", exc_info=True)
 
-# Run the server
 if __name__ == "__main__":
+    logger.info(f"--- Script executed with __name__ == '__main__' ---")
     main()
+else:
+    logger.info(f"--- Script imported, __name__ is '{__name__}' ---")
+    # Potentially log if FastMCP expects to be run differently when imported by its runner

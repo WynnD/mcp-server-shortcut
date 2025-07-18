@@ -243,11 +243,13 @@ async def get_story_details(story_id: int) -> str:
 async def create_story(
     name: str,
     description: str,
-    story_type: StoryType = StoryType.FEATURE,
+    story_type: StoryType = "feature",
     project_id: int = None,
     workflow_state_id: int = None,
     owner_ids: List[str] = None,
-    labels: List[str] = None
+    labels: List[str] = None,
+    epic_id: int = None,
+    story_links: List[Dict[str, Any]] = None
 ) -> str:
     """
     Create a new story in Shortcut.
@@ -260,6 +262,8 @@ async def create_story(
         workflow_state_id: ID of the workflow state
         owner_ids: List of user IDs to assign as owners
         labels: List of label names to add to the story
+        epic_id: Optional ID of the epic this story belongs to.
+        story_links: Optional list of story links (e.g., [{"verb": "relates to", "object_id": 123}]).
         
     Returns:
         Formatted created story details
@@ -268,13 +272,13 @@ async def create_story(
     story_data = {
         "name": name,
         "description": description,
-        "story_type": story_type if isinstance(story_type, str) else story_type.value
+        "story_type": story_type
     }
     
-    if project_id:
+    if project_id is not None:
         story_data["project_id"] = project_id
     
-    if workflow_state_id:
+    if workflow_state_id is not None:
         story_data["workflow_state_id"] = workflow_state_id
     
     if owner_ids:
@@ -282,6 +286,12 @@ async def create_story(
         
     if labels:
         story_data["labels"] = [{"name": label} for label in labels]
+
+    if epic_id is not None:
+        story_data["epic_id"] = epic_id
+        
+    if story_links:
+        story_data["story_links"] = story_links
     
     # Create the story
     created_story = await shortcut_client.create_story_async(story_data)
@@ -304,7 +314,9 @@ async def update_story(
     description: str = None,
     story_type: StoryType = None,
     workflow_state_id: int = None,
-    owner_ids: List[str] = None
+    owner_ids: List[str] = None,
+    epic_id: int = None,
+    story_links: List[Dict[str, Any]] = None
 ) -> str:
     """
     Update an existing story in Shortcut.
@@ -316,6 +328,8 @@ async def update_story(
         story_type: New type for the story
         workflow_state_id: New workflow state ID
         owner_ids: New list of owner user IDs
+        epic_id: Optional new ID of the epic this story belongs to. Use 'null' via client to remove.
+        story_links: Optional list of story links to add/update. Behavior depends on API (replace vs. merge).
         
     Returns:
         Formatted updated story details
@@ -323,21 +337,30 @@ async def update_story(
     # Prepare the update data
     update_data = {}
     
-    if name:
+    if name is not None:
         update_data["name"] = name
         
-    if description:
+    if description is not None:
         update_data["description"] = description
         
     if story_type:
-        update_data["story_type"] = story_type if isinstance(story_type, str) else story_type.value
+        update_data["story_type"] = story_type
         
-    if workflow_state_id:
+    if workflow_state_id is not None:
         update_data["workflow_state_id"] = workflow_state_id
         
-    if owner_ids:
+    if owner_ids is not None:
         update_data["owner_ids"] = owner_ids
-    
+
+    if epic_id is not None:
+        update_data["epic_id"] = epic_id
+
+    if story_links is not None:
+        update_data["story_links"] = story_links
+        
+    if not update_data:
+        return json.dumps({"error": "No update parameters provided for the story."})
+
     # Update the story
     updated_story = await shortcut_client.update_story_async(story_id, update_data)
     
@@ -421,18 +444,187 @@ async def list_projects() -> str:
     projects = await shortcut_client.get_projects_async()
     
     try:
-        # Format projects for display
-        formatted_projects = [Project(
-            id=project.get("id"),
-            name=project.get("name"),
-            description=project.get("description"),
-            archived=project.get("archived", False)
-        ).model_dump() for project in projects]
-        
+        # Convert raw projects to validated model objects
+        formatted_projects = [Project.model_validate(project).model_dump() for project in projects]
         return json.dumps(formatted_projects, indent=2)
     except Exception as e:
         logger.error(f"Error formatting projects: {e}")
         return json.dumps({"error": f"Error formatting projects: {str(e)}"})
+
+@mcp.tool()
+async def list_epics(
+    # No specific parameters for basic list, but can add if Shortcut API supports
+    # e.g., archived: bool = None
+) -> str:
+    """
+    List all epics in the Shortcut workspace.
+    
+    Returns:
+        Formatted list of epics as a JSON string.
+    """
+    logger.debug("Executing list_epics tool")
+    try:
+        epics = await shortcut_client.list_epics_async() # Assuming params are optional or not needed for a general list
+        if epics is None: # list_epics_async might return None on error or empty
+            logger.warning("shortcut_client.list_epics_async returned None")
+            return json.dumps([]) # Return empty list if None
+        
+        # For now, return epics as is. Later, we can add Pydantic models for validation/formatting.
+        # Example: formatted_epics = [EpicSummary.model_validate(epic).model_dump() for epic in epics]
+        logger.info(f"Successfully retrieved {len(epics)} epics.")
+        return json.dumps(epics, indent=2)
+    except Exception as e:
+        logger.error(f"Error in list_epics tool: {e}", exc_info=True)
+        return json.dumps({"error": f"Error listing epics: {str(e)}"})
+
+@mcp.tool()
+async def create_epic(
+    name: str,
+    description: str = None,
+    owner_ids: List[str] = None,
+    # Add other relevant fields from Shortcut API as needed, e.g.:
+    # external_id: str = None,
+    # milestone_id: int = None,
+    # labels: List[Dict[str, str]] = None, # e.g., [{"name": "epic-label"}]
+    # follower_ids: List[str] = None,
+    # requested_by_id: str = None,
+) -> str:
+    """
+    Create a new epic in Shortcut.
+    
+    Args:
+        name: The name of the epic (required).
+        description: Optional description for the epic.
+        owner_ids: Optional list of UUIDs for owners of this epic.
+        # ... other optional args
+        
+    Returns:
+        Formatted created epic details as a JSON string.
+    """
+    logger.debug(f"Executing create_epic tool with name: {name}")
+    epic_data = {"name": name}
+    if description is not None:
+        epic_data["description"] = description
+    if owner_ids:
+        epic_data["owner_ids"] = owner_ids
+    # Add other optional fields to epic_data if provided
+    # if labels: epic_data["labels"] = labels 
+
+    try:
+        created_epic = await shortcut_client.create_epic_async(epic_data)
+        if not created_epic or ("error" in created_epic and created_epic.get("details")):
+            error_detail = created_epic.get("details", "Unknown error from client") if isinstance(created_epic, dict) else "Unknown error from client"
+            logger.error(f"Failed to create epic. Client response: {error_detail}")
+            return json.dumps({"error": "Failed to create epic", "details": error_detail})
+        
+        logger.info(f"Successfully created epic with ID: {created_epic.get('id')}")
+        # For now, return raw epic. Later, use Pydantic model: EpicDetail.model_validate(created_epic).model_dump()
+        return json.dumps(created_epic, indent=2)
+    except Exception as e:
+        logger.error(f"Error in create_epic tool: {e}", exc_info=True)
+        return json.dumps({"error": f"Error creating epic: {str(e)}"})
+
+@mcp.tool()
+async def get_epic_details(epic_id: int) -> str:
+    """
+    Get detailed information about a specific epic.
+    
+    Args:
+        epic_id: The ID of the epic to retrieve.
+        
+    Returns:
+        Formatted epic details as a JSON string.
+    """
+    logger.debug(f"Executing get_epic_details tool for epic_id: {epic_id}")
+    try:
+        epic = await shortcut_client.get_epic_async(epic_id)
+        if not epic or ("error" in epic and epic.get("details")):
+            error_detail = epic.get("details", f"Epic with ID {epic_id} not found or error from client") if isinstance(epic, dict) else f"Epic with ID {epic_id} not found"
+            logger.warning(f"Could not retrieve epic {epic_id}. Client response: {error_detail}")
+            return json.dumps({"error": f"Epic with ID {epic_id} not found", "details": error_detail })
+        
+        logger.info(f"Successfully retrieved details for epic ID: {epic_id}")
+        # For now, return raw epic. Later, use Pydantic model: EpicDetail.model_validate(epic).model_dump()
+        return json.dumps(epic, indent=2)
+    except Exception as e:
+        logger.error(f"Error in get_epic_details tool for epic_id {epic_id}: {e}", exc_info=True)
+        return json.dumps({"error": f"Error getting epic details: {str(e)}"})
+
+@mcp.tool()
+async def update_epic(
+    epic_id: int,
+    name: str = None,
+    description: str = None,
+    owner_ids: List[str] = None,
+    # Add other relevant updateable fields from Shortcut API as needed
+    # e.g., milestone_id: int = None, (pass null to unset)
+    # archived: bool = None
+) -> str:
+    """
+    Update an existing epic in Shortcut.
+    
+    Args:
+        epic_id: The ID of the epic to update.
+        name: Optional new name for the epic.
+        description: Optional new description for the epic.
+        owner_ids: Optional new list of owner UUIDs.
+        # ... other optional args
+        
+    Returns:
+        Formatted updated epic details as a JSON string.
+    """
+    logger.debug(f"Executing update_epic tool for epic_id: {epic_id}")
+    update_data = {}
+    if name is not None:
+        update_data["name"] = name
+    if description is not None:
+        update_data["description"] = description
+    if owner_ids is not None: # Allow empty list to remove all owners
+        update_data["owner_ids"] = owner_ids
+    # Add other fields to update_data if provided
+
+    if not update_data:
+        return json.dumps({"error": "No update data provided for epic."})
+
+    try:
+        updated_epic = await shortcut_client.update_epic_async(epic_id, update_data)
+        if not updated_epic or ("error" in updated_epic and updated_epic.get("details")):
+            error_detail = updated_epic.get("details", "Unknown error from client") if isinstance(updated_epic, dict) else "Unknown error from client"
+            logger.error(f"Failed to update epic {epic_id}. Client response: {error_detail}")
+            return json.dumps({"error": f"Failed to update epic {epic_id}", "details": error_detail})
+        
+        logger.info(f"Successfully updated epic ID: {epic_id}")
+        # For now, return raw epic. Later, use Pydantic model: EpicDetail.model_validate(updated_epic).model_dump()
+        return json.dumps(updated_epic, indent=2)
+    except Exception as e:
+        logger.error(f"Error in update_epic tool for epic_id {epic_id}: {e}", exc_info=True)
+        return json.dumps({"error": f"Error updating epic: {str(e)}"})
+
+@mcp.tool()
+async def delete_epic(epic_id: int) -> str:
+    """
+    Delete an epic from Shortcut.
+    
+    Args:
+        epic_id: The ID of the epic to delete.
+        
+    Returns:
+        Success or error message as a JSON string.
+    """
+    logger.debug(f"Executing delete_epic tool for epic_id: {epic_id}")
+    try:
+        success = await shortcut_client.delete_epic_async(epic_id)
+        if success:
+            logger.info(f"Successfully deleted epic ID: {epic_id}")
+            return json.dumps({"success": True, "message": f"Epic {epic_id} deleted successfully."})
+        else:
+            # delete_epic_async in client returns False on error or if client itself had an issue. 
+            # It might also return a dict with error from _make_request_async
+            logger.warning(f"Failed to delete epic {epic_id}. Client indicated failure.")
+            return json.dumps({"error": f"Failed to delete epic {epic_id}. Client indicated failure or epic not found."})
+    except Exception as e:
+        logger.error(f"Error in delete_epic tool for epic_id {epic_id}: {e}", exc_info=True)
+        return json.dumps({"error": f"Error deleting epic: {str(e)}"})
 
 # Prompt templates
 @mcp.prompt()

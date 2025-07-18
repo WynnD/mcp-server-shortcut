@@ -12,11 +12,15 @@ from enum import Enum
 from pydantic import BaseModel, Field, validator
 
 # Define Pydantic models for type safety and validation
-class StoryType(str, Enum):
-    """Enumeration of story types in Shortcut."""
-    FEATURE = "feature"
-    BUG = "bug"
-    CHORE = "chore"
+# Change from Enum to Literal to avoid $ref generation
+StoryType = Literal["feature", "bug", "chore"]
+
+# Comment out the old enum class
+# class StoryType(str, Enum):
+#     """Enumeration of story types in Shortcut."""
+#     FEATURE = "feature"
+#     BUG = "bug"
+#     CHORE = "chore"
     
 class StorySummary(BaseModel):
     """Model for summarized story information."""
@@ -99,10 +103,10 @@ def format_story_for_display(story: Dict[str, Any]) -> Dict[str, Any]:
         Formatted story with selected fields
     """
     try:
-        # Convert raw story to validated model object
+        # Convert raw story to validated model object with proper type checking
         story_detail = StoryDetail(
-            id=story.get("id"),
-            name=story.get("name"),
+            id=story.get("id") or 0,  # Provide default for required field
+            name=story.get("name") or "",  # Provide default for required field
             description=story.get("description"),
             story_type=story.get("story_type"),
             workflow_state_id=story.get("workflow_state_id"),

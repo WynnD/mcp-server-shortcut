@@ -265,6 +265,85 @@ class ShortcutClient:
         """
         return self._make_request("GET", "projects") or []
 
+    # Epic Management Methods - Synchronous
+    def list_epics(self, params: Optional[Dict] = None) -> List[Dict]:
+        """
+        List all epics.
+
+        Args:
+            params: Optional query parameters for filtering epics.
+
+        Returns:
+            List of epics.
+        """
+        return self._make_request("GET", "epics", params=params) or []
+
+    def create_epic(self, data: Dict[str, Any]) -> Optional[Dict]:
+        """
+        Create a new epic.
+
+        Args:
+            data: Epic data (e.g., name, description). 
+                  Refer to Shortcut API docs for all possible fields.
+
+        Returns:
+            Created epic or None if creation failed.
+        """
+        try:
+            return self._make_request("POST", "epics", data=data)
+        except Exception as e:
+            logger.error(f"Error creating epic: {str(e)}")
+            return None
+
+    def get_epic(self, epic_id: int) -> Optional[Dict]:
+        """
+        Get a specific epic by its ID.
+
+        Args:
+            epic_id: The public ID of the epic.
+
+        Returns:
+            Epic details or None if not found.
+        """
+        try:
+            return self._make_request("GET", f"epics/{epic_id}")
+        except Exception:
+            return None # Or re-raise, depending on desired error handling
+
+    def update_epic(self, epic_id: int, data: Dict[str, Any]) -> Optional[Dict]:
+        """
+        Update an existing epic.
+
+        Args:
+            epic_id: The public ID of the epic to update.
+            data: Data to update for the epic.
+
+        Returns:
+            Updated epic or None if update failed.
+        """
+        try:
+            return self._make_request("PUT", f"epics/{epic_id}", data=data)
+        except Exception as e:
+            logger.error(f"Error updating epic {epic_id}: {str(e)}")
+            return None
+            
+    def delete_epic(self, epic_id: int) -> bool:
+        """
+        Delete an epic.
+
+        Args:
+            epic_id: The public ID of the epic to delete.
+
+        Returns:
+            True if deletion was successful (HTTP 204), False otherwise.
+        """
+        try:
+            self._make_request("DELETE", f"epics/{epic_id}")
+            return True # _make_request would raise for non-2xx, 204 returns None
+        except Exception as e:
+            logger.error(f"Error deleting epic {epic_id}: {str(e)}")
+            return False
+
     # Async methods
     async def get_stories_async(self, params: Optional[Dict] = None) -> List[Dict]:
         """
@@ -384,3 +463,83 @@ class ShortcutClient:
         if isinstance(result, dict) and "error" in result:
             return []
         return result or []
+
+    # Epic Management Methods - Asynchronous
+    async def list_epics_async(self, params: Optional[Dict] = None) -> List[Dict]:
+        """
+        List all epics asynchronously.
+
+        Args:
+            params: Optional query parameters for filtering epics.
+
+        Returns:
+            List of epics.
+        """
+        result = await self._make_request_async("GET", "epics", params=params)
+        if isinstance(result, dict) and "error" in result:
+            return []
+        return result or []
+
+    async def create_epic_async(self, data: Dict[str, Any]) -> Optional[Dict]:
+        """
+        Create a new epic asynchronously.
+
+        Args:
+            data: Epic data.
+
+        Returns:
+            Created epic or None if creation failed.
+        """
+        result = await self._make_request_async("POST", "epics", data=data)
+        if isinstance(result, dict) and "error" in result:
+            return None
+        return result
+
+    async def get_epic_async(self, epic_id: int) -> Optional[Dict]:
+        """
+        Get a specific epic by its ID asynchronously.
+
+        Args:
+            epic_id: The public ID of the epic.
+
+        Returns:
+            Epic details or None if not found.
+        """
+        result = await self._make_request_async("GET", f"epics/{epic_id}")
+        if isinstance(result, dict) and "error" in result:
+            return None
+        return result
+
+    async def update_epic_async(self, epic_id: int, data: Dict[str, Any]) -> Optional[Dict]:
+        """
+        Update an existing epic asynchronously.
+
+        Args:
+            epic_id: The public ID of the epic to update.
+            data: Data to update for the epic.
+
+        Returns:
+            Updated epic or None if update failed.
+        """
+        result = await self._make_request_async("PUT", f"epics/{epic_id}", data=data)
+        if isinstance(result, dict) and "error" in result:
+            return None
+        return result
+
+    async def delete_epic_async(self, epic_id: int) -> bool:
+        """
+        Delete an epic asynchronously.
+
+        Args:
+            epic_id: The public ID of the epic to delete.
+
+        Returns:
+            True if deletion was successful, False otherwise.
+        """
+        try:
+            # _make_request_async returns None for 204, or a dict with error on failure
+            result = await self._make_request_async("DELETE", f"epics/{epic_id}")
+            return not (isinstance(result, dict) and "error" in result) # True if no error or None (for 204)
+        except Exception as e: # Should ideally be caught by _make_request_async returning error dict
+            logger.error(f"Error deleting epic {epic_id} asynchronously: {str(e)}")
+            return False

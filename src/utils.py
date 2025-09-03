@@ -54,6 +54,7 @@ class StoryDetail(BaseModel):
     workflow_state_name: Optional[str] = None
     estimate: Optional[int] = None
     project_id: Optional[int] = None
+    epic_id: Optional[int] = None
     owner_ids: List[str] = Field(default_factory=list)
     label_ids: List[int] = Field(default_factory=list) 
     created_at: Optional[str] = None
@@ -113,6 +114,7 @@ def format_story_for_display(story: Dict[str, Any]) -> Dict[str, Any]:
             workflow_state_name=story.get("workflow_state_name"),
             estimate=story.get("estimate"),
             project_id=story.get("project_id"),
+            epic_id=story.get("epic_id"),
             owner_ids=story.get("owner_ids", []),
             label_ids=story.get("label_ids", []),
             created_at=story.get("created_at"),

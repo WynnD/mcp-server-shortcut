@@ -265,6 +265,15 @@ class ShortcutClient:
         """
         return self._make_request("GET", "projects") or []
 
+    def get_groups(self) -> List[Dict]:
+        """
+        Get all groups (teams).
+        
+        Returns:
+            List of groups
+        """
+        return self._make_request("GET", "groups") or []
+
     # Epic Management Methods - Synchronous
     def list_epics(self, params: Optional[Dict] = None) -> List[Dict]:
         """
@@ -460,6 +469,18 @@ class ShortcutClient:
             List of projects
         """
         result = await self._make_request_async("GET", "projects")
+        if isinstance(result, dict) and "error" in result:
+            return []
+        return result or []
+
+    async def get_groups_async(self) -> List[Dict]:
+        """
+        Get all groups (teams) asynchronously.
+        
+        Returns:
+            List of groups
+        """
+        result = await self._make_request_async("GET", "groups")
         if isinstance(result, dict) and "error" in result:
             return []
         return result or []

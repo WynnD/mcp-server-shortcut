@@ -249,7 +249,8 @@ async def create_story(
     owner_ids: List[str] = None,
     labels: List[str] = None,
     epic_id: int = None,
-    story_links: List[Dict[str, Any]] = None
+    story_links: List[Dict[str, Any]] = None,
+    group_id: str = None
 ) -> str:
     """
     Create a new story in Shortcut.
@@ -264,6 +265,7 @@ async def create_story(
         labels: List of label names to add to the story
         epic_id: Optional ID of the epic this story belongs to.
         story_links: Optional list of story links (e.g., [{"verb": "relates to", "object_id": 123}]).
+        group_id: Optional ID of the team/group to assign the story to
         
     Returns:
         Formatted created story details
@@ -293,6 +295,9 @@ async def create_story(
     if story_links:
         story_data["story_links"] = story_links
     
+    if group_id is not None:
+        story_data["group_id"] = group_id
+    
     # Create the story
     created_story = await shortcut_client.create_story_async(story_data)
     
@@ -316,7 +321,8 @@ async def update_story(
     workflow_state_id: int = None,
     owner_ids: List[str] = None,
     epic_id: int = None,
-    story_links: List[Dict[str, Any]] = None
+    story_links: List[Dict[str, Any]] = None,
+    group_id: str = None
 ) -> str:
     """
     Update an existing story in Shortcut.
@@ -330,6 +336,7 @@ async def update_story(
         owner_ids: New list of owner user IDs
         epic_id: Optional new ID of the epic this story belongs to. Use 'null' via client to remove.
         story_links: Optional list of story links to add/update. Behavior depends on API (replace vs. merge).
+        group_id: Optional new ID of the team/group to assign the story to
         
     Returns:
         Formatted updated story details
@@ -357,6 +364,9 @@ async def update_story(
 
     if story_links is not None:
         update_data["story_links"] = story_links
+
+    if group_id is not None:
+        update_data["group_id"] = group_id
         
     if not update_data:
         return json.dumps({"error": "No update parameters provided for the story."})
@@ -450,6 +460,23 @@ async def list_projects() -> str:
     except Exception as e:
         logger.error(f"Error formatting projects: {e}")
         return json.dumps({"error": f"Error formatting projects: {str(e)}"})
+
+@mcp.tool()
+async def list_groups() -> str:
+    """
+    List all groups (teams) in the Shortcut workspace.
+    
+    Returns:
+        Formatted list of groups
+    """
+    groups = await shortcut_client.get_groups_async()
+    
+    try:
+        # Return groups as-is for now (could add Pydantic model later)
+        return json.dumps(groups, indent=2)
+    except Exception as e:
+        logger.error(f"Error formatting groups: {e}")
+        return json.dumps({"error": f"Error formatting groups: {str(e)}"})
 
 @mcp.tool()
 async def list_epics(

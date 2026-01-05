@@ -66,11 +66,12 @@ try:
 
 except ImportError as e:
     logger.error(f"ImportError during server startup: {e}", exc_info=True)
-    # If imports fail, the server likely won't work, so re-raise or exit
-    # For now, we'll let it try to continue to see if mcp object gets created.
-    # In a real scenario, you might want to sys.exit(1) here.
+    print(f"CRITICAL: Missing dependencies. Please run 'pip install -r requirements.txt'. Error: {e}", file=sys.stderr)
+    sys.exit(1)
 except Exception as e:
     logger.error(f"Generic exception during imports or initial config: {e}", exc_info=True)
+    print(f"CRITICAL: Unexpected error during startup imports: {e}", file=sys.stderr)
+    sys.exit(1)
 # --- End Imports ---
 
 logger.info("Initializing ShortcutClient...")
@@ -83,8 +84,8 @@ try:
         logger.info("ShortcutClient appears to have an API token.")
 except Exception as e:
     logger.error(f"Exception during ShortcutClient() instantiation: {e}", exc_info=True)
-    # This is critical, server probably can't function
-    # For now, we log and continue to see if FastMCP part errors out
+    print(f"CRITICAL: Failed to initialize ShortcutClient: {e}", file=sys.stderr)
+    sys.exit(1)
     
 logger.info("Initializing FastMCP server object...")
 try:
@@ -92,7 +93,8 @@ try:
     logger.info("FastMCP object initialized.")
 except Exception as e:
     logger.error(f"Exception during FastMCP() instantiation: {e}", exc_info=True)
-    # Critical if FastMCP object itself fails
+    print(f"CRITICAL: Failed to initialize FastMCP: {e}", file=sys.stderr)
+    sys.exit(1)
 
 # Resource implementations
 @mcp.resource("shortcut://stories?workflow_state_id={workflow_state_id}&project_id={project_id}&limit={limit}")
